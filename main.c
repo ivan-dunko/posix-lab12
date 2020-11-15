@@ -38,20 +38,6 @@ void assertInThreadSuccess(int errcode, Context *cntx){
     }
 }
 
-int printLine(size_t print_cnt, const char *str){
-    for (size_t i = 0; i < print_cnt; ++i){
-        int len = strlen(str);
-        if (len == ERROR_CODE)
-            return ERROR_CODE;
-    
-        int err = write(STDIN_FILENO, str, len);
-        if (err == ERROR_CODE)
-            return ERROR_CODE;
-    }
-
-    return SUCCESS_CODE;
-}
-
 void lockSuccessAssertion(pthread_mutex_t *mtx, const char *msg){
     if (mtx == NULL)
         return;
