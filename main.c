@@ -130,8 +130,6 @@ void destroyCondVarSuccessAssertion(
     assertSuccess(err_msg, err);
 }
 
-
-
 void releaseResources(
     pthread_cond_t *cond,
     pthread_mutex_t *cond_mtx){
@@ -156,17 +154,41 @@ int initContext(
     return SUCCESS_CODE;
 }
 
+#define MAIN_THREAD 0
+#define ROUTINE_THREAD 1
+/*
+    Variable stores id of last thread
+    that has sent signal.
+    Necessary for condition predicate
+*/
+size_t last_signal_from = ROUTINE_THREAD;
+
+void iteration(
+    Context *cntx, 
+    const char *msg, 
+    size_t call_thread_id,
+    size_t wait_thread_id,
+    const char *err_msg){
+    
+    printf(msg);
+    condSignalSuccessAssertion(cntx->cond_var, err_msg);
+    last_signal_from = call_thread_id;
+    /*
+        Need to check condition in while loop
+        since spurious wakeups may occur.
+    */
+    while (last_signal_from != wait_thread_id)
+        condWaitSuccessAssertion(cntx->cond_var, cntx->cond_mtx, err_msg);
+}
+
 void *routine(void *data){
     if (data == NULL)
         exitWithFailure("routine", EINVAL);
 
     Context *cntx = (Context*)data;
     lockSuccessAssertion(cntx->cond_mtx, "routine");
-    for (int i = 0; i < PRINT_CNT; ++i){
-        printf(THREAD_MSG);
-        condSignalSuccessAssertion(cntx->cond_var, "routine");
-        condWaitSuccessAssertion(cntx->cond_var, cntx->cond_mtx, "routine");
-    }
+    for (int i = 0; i < PRINT_CNT; ++i)
+        iteration(cntx, THREAD_MSG, ROUTINE_THREAD, MAIN_THREAD, "routine");
 
     unlockSuccessAssertion(cntx->cond_mtx, "routine");
     pthread_exit((void*)SUCCESS_CODE);
@@ -175,11 +197,10 @@ void *routine(void *data){
 int main(int argc, char **argv){
     pthread_t pid;
 
-    pthread_mutex_t cond_mtx, check_mtx;
+    pthread_mutex_t cond_mtx;
     pthread_cond_t cond;
 
     initMutexSuccessAssertion(&cond_mtx, NULL, "main");
-    initMutexSuccessAssertion(&check_mtx, NULL, "main");
     initCondVarSuccessAssertion(&cond, NULL, "main");
     
     Context cntx;
@@ -191,12 +212,10 @@ int main(int argc, char **argv){
     if (err != SUCCESS_CODE)
         exitWithFailure("main", err);
 
-    for (int i = 0; i < PRINT_CNT; ++i){
-        printf(MAIN_MSG);
-        condSignalSuccessAssertion(cntx.cond_var, "main");
-        condWaitSuccessAssertion(cntx.cond_var, cntx.cond_mtx, "main");
-    }
+    for (int i = 0; i < PRINT_CNT; ++i)
+        iteration(&cntx, MAIN_MSG, MAIN_THREAD, ROUTINE_THREAD, "main");
     
+    last_signal_from = MAIN_THREAD;
     condSignalSuccessAssertion(cntx.cond_var, "main");
     unlockSuccessAssertion(cntx.cond_mtx, "main");
     err = pthread_join(pid, NULL);
