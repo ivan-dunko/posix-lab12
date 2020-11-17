@@ -157,14 +157,17 @@ void iteration(
     const char *err_msg){
     
     printf(msg);
+    lockSuccessAssertion(cntx->cond_mtx, err_msg);
     condSignalSuccessAssertion(cntx->cond_var, err_msg);
     last_signal_from = call_thread_id;
     /*
         Need to check condition in while loop
         since spurious wakeups may occur.
     */
-    while (last_signal_from != wait_thread_id)
+    while (last_signal_from != wait_thread_id){
+        unlockSuccessAssertion(cntx->cond_mtx, err_msg);
         condWaitSuccessAssertion(cntx->cond_var, cntx->cond_mtx, err_msg);
+    }
 }
 
 void *routine(void *data){
@@ -186,15 +189,21 @@ int main(int argc, char **argv){
     pthread_mutex_t cond_mtx;
     pthread_cond_t cond;
 
-    initMutexSuccessAssertion(&cond_mtx, NULL, "main");
+    pthread_mutexattr_t mtx_attr;
+    int err = pthread_mutexattr_init(&mtx_attr);
+    assertSuccess("main", err);
+    /* use recursive mutex to prevent from deadlock upon spurious wakeup */
+    pthread_mutexattr_settype(&mtx_attr, PTHREAD_MUTEX_RECURSIVE);
+    initMutexSuccessAssertion(&cond_mtx, &mtx_attr, "main");
     initCondVarSuccessAssertion(&cond, NULL, "main");
+    err = pthread_mutexattr_destroy(&mtx_attr);
     
     Context cntx;
     initContext(&cntx, &cond, &cond_mtx);
 
     lockSuccessAssertion(cntx.cond_mtx, "main");
 
-    int err = pthread_create(&pid, NULL, routine, (void*)(&cntx));
+    err = pthread_create(&pid, NULL, routine, (void*)(&cntx));
     if (err != SUCCESS_CODE)
         exitWithFailure("main", err);
 
