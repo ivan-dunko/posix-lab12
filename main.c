@@ -193,11 +193,13 @@ int main(int argc, char **argv){
     int err = pthread_mutexattr_init(&mtx_attr);
     assertSuccess("main", err);
     /* use recursive mutex to prevent from deadlock upon spurious wakeup */
-    pthread_mutexattr_settype(&mtx_attr, PTHREAD_MUTEX_RECURSIVE);
+    err = pthread_mutexattr_settype(&mtx_attr, PTHREAD_MUTEX_RECURSIVE);
+    assertSuccess("main", err);
     initMutexSuccessAssertion(&cond_mtx, &mtx_attr, "main");
     initCondVarSuccessAssertion(&cond, NULL, "main");
     err = pthread_mutexattr_destroy(&mtx_attr);
-    
+    assertSuccess("main", err);
+
     Context cntx;
     initContext(&cntx, &cond, &cond_mtx);
 
