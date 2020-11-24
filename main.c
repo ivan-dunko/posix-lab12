@@ -157,17 +157,10 @@ void iteration(
     const char *err_msg){
     
     printf(msg);
-    lockSuccessAssertion(cntx->cond_mtx, err_msg);
     condSignalSuccessAssertion(cntx->cond_var, err_msg);
     last_signal_from = call_thread_id;
-    /*
-        Need to check condition in while loop
-        since spurious wakeups may occur.
-    */
-    while (last_signal_from != wait_thread_id){
-        unlockSuccessAssertion(cntx->cond_mtx, err_msg);
+    while (last_signal_from != wait_thread_id)
         condWaitSuccessAssertion(cntx->cond_var, cntx->cond_mtx, err_msg);
-    }
 }
 
 void *routine(void *data){
@@ -192,8 +185,9 @@ int main(int argc, char **argv){
     pthread_mutexattr_t mtx_attr;
     int err = pthread_mutexattr_init(&mtx_attr);
     assertSuccess("main", err);
+
     /* use recursive mutex to prevent from deadlock upon spurious wakeup */
-    err = pthread_mutexattr_settype(&mtx_attr, PTHREAD_MUTEX_RECURSIVE);
+    err = pthread_mutexattr_settype(&mtx_attr, PTHREAD_MUTEX_NORMAL);
     assertSuccess("main", err);
     initMutexSuccessAssertion(&cond_mtx, &mtx_attr, "main");
     initCondVarSuccessAssertion(&cond, NULL, "main");
