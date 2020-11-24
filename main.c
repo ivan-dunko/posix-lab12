@@ -186,7 +186,6 @@ int main(int argc, char **argv){
     int err = pthread_mutexattr_init(&mtx_attr);
     assertSuccess("main", err);
 
-    /* use recursive mutex to prevent from deadlock upon spurious wakeup */
     err = pthread_mutexattr_settype(&mtx_attr, PTHREAD_MUTEX_NORMAL);
     assertSuccess("main", err);
     initMutexSuccessAssertion(&cond_mtx, &mtx_attr, "main");
