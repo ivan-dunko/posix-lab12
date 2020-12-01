@@ -17,6 +17,9 @@
 typedef struct Context{
     pthread_cond_t *cond_var;
     pthread_mutex_t *cond_mtx;
+    size_t thread_cnt;
+    size_t thread_id;
+    size_t *signal_thread;
     int return_code;
 } Context;
 
@@ -127,41 +130,38 @@ void releaseResources(
 int initContext(
     Context *cntx,
     pthread_cond_t *cond,
-    pthread_mutex_t *cond_mtx){
+    pthread_mutex_t *cond_mtx,
+    size_t thread_cnt,
+    size_t thread_id,
+    size_t *signal_thread){
     
     if (cntx == NULL || cond_mtx == NULL
-        || cond == NULL)
+        || cond == NULL || signal_thread == NULL)
         return EINVAL;
 
     cntx->cond_var = cond;
     cntx->cond_mtx = cond_mtx;
     cntx->return_code = SUCCESS_CODE;
+    cntx->thread_cnt = thread_cnt;
+    cntx->thread_id = thread_id;
+    cntx->signal_thread = signal_thread;
 
     return SUCCESS_CODE;
 }
 
-#define MAIN_THREAD 0
-#define ROUTINE_THREAD 1
-/*
-    Variable stores id of last thread
-    that has sent signal.
-    Necessary for condition predicate
-*/
-size_t last_signal_from = ROUTINE_THREAD;
-
 void iteration(
     Context *cntx, 
     const char *msg, 
-    size_t call_thread_id,
-    size_t wait_thread_id,
     const char *err_msg){
     
     printf(msg);
     condSignalSuccessAssertion(cntx->cond_var, err_msg);
-    last_signal_from = call_thread_id;
-    while (last_signal_from != wait_thread_id)
+    *cntx->signal_thread = (cntx->thread_id + 1) % cntx->thread_cnt;
+    while (*cntx->signal_thread != cntx->thread_id)
         condWaitSuccessAssertion(cntx->cond_var, cntx->cond_mtx, err_msg);
 }
+
+#define THREAD_CNT 2
 
 void *routine(void *data){
     if (data == NULL)
@@ -170,7 +170,7 @@ void *routine(void *data){
     Context *cntx = (Context*)data;
     lockSuccessAssertion(cntx->cond_mtx, "routine");
     for (int i = 0; i < PRINT_CNT; ++i)
-        iteration(cntx, THREAD_MSG, ROUTINE_THREAD, MAIN_THREAD, "routine");
+        iteration(cntx, THREAD_MSG,"routine");
 
     unlockSuccessAssertion(cntx->cond_mtx, "routine");
     pthread_exit((void*)SUCCESS_CODE);
@@ -193,21 +193,25 @@ int main(int argc, char **argv){
     err = pthread_mutexattr_destroy(&mtx_attr);
     assertSuccess("main", err);
 
-    Context cntx;
-    initContext(&cntx, &cond, &cond_mtx);
+    //thread that is going to make print and signal
+    size_t signal_thread = 0;
 
-    lockSuccessAssertion(cntx.cond_mtx, "main");
+    Context cntx[THREAD_CNT];
+    for (size_t i = 0; i < THREAD_CNT; ++i)
+        initContext(&cntx[i], &cond, &cond_mtx, THREAD_CNT, i, &signal_thread);
 
-    err = pthread_create(&pid, NULL, routine, (void*)(&cntx));
+    lockSuccessAssertion(cntx[0].cond_mtx, "main");
+
+    err = pthread_create(&pid, NULL, routine, (void*)(&cntx[1]));
     if (err != SUCCESS_CODE)
         exitWithFailure("main", err);
 
     for (int i = 0; i < PRINT_CNT; ++i)
-        iteration(&cntx, MAIN_MSG, MAIN_THREAD, ROUTINE_THREAD, "main");
+        iteration(&cntx[0], MAIN_MSG, "main");
     
-    last_signal_from = MAIN_THREAD;
-    condSignalSuccessAssertion(cntx.cond_var, "main");
-    unlockSuccessAssertion(cntx.cond_mtx, "main");
+    signal_thread = THREAD_CNT - 1;
+    condSignalSuccessAssertion(cntx[0].cond_var, "main");
+    unlockSuccessAssertion(cntx[0].cond_mtx, "main");
     err = pthread_join(pid, NULL);
     assertSuccess("main", err);
 
