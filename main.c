@@ -172,12 +172,16 @@ void *routine(void *data){
     for (int i = 0; i < PRINT_CNT; ++i)
         iteration(cntx, THREAD_MSG,"routine");
 
+
+    *cntx->signal_thread = (cntx->thread_id + 1) % cntx->thread_cnt;
+    condSignalSuccessAssertion(cntx->cond_var, "routine");
     unlockSuccessAssertion(cntx->cond_mtx, "routine");
+
     pthread_exit((void*)SUCCESS_CODE);
 }
 
 int main(int argc, char **argv){
-    pthread_t pid;
+    pthread_t pid[THREAD_CNT];
 
     pthread_mutex_t cond_mtx;
     pthread_cond_t cond;
@@ -202,18 +206,24 @@ int main(int argc, char **argv){
 
     lockSuccessAssertion(cntx[0].cond_mtx, "main");
 
-    err = pthread_create(&pid, NULL, routine, (void*)(&cntx[1]));
-    if (err != SUCCESS_CODE)
-        exitWithFailure("main", err);
+    for (size_t i = 0; i < THREAD_CNT - 1; ++i){
+        err = pthread_create(&pid[i], NULL, routine, (void*)(&cntx[i + 1]));
+        assertSuccess("main", err);
+    }
 
     for (int i = 0; i < PRINT_CNT; ++i)
         iteration(&cntx[0], MAIN_MSG, "main");
     
-    signal_thread = THREAD_CNT - 1;
+    signal_thread = 1;
     condSignalSuccessAssertion(cntx[0].cond_var, "main");
     unlockSuccessAssertion(cntx[0].cond_mtx, "main");
-    err = pthread_join(pid, NULL);
     assertSuccess("main", err);
+
+    for (size_t i = 0; i < THREAD_CNT - 1; ++i){
+        err = pthread_join(pid[i], NULL);
+        if (err != ESRCH)
+            assertSuccess("main", err);
+    }
 
     releaseResources(&cond, &cond_mtx);
 
