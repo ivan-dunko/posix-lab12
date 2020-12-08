@@ -10,6 +10,7 @@
 #define PRINT_CNT 10
 #define THREAD_MSG "routine\n"
 #define MAIN_MSG "main\n"
+#define THREAD_CNT 4
 
 #define lock pthread_mutex_lock
 #define unlock pthread_mutex_unlock
@@ -75,6 +76,16 @@ void condSignalSuccessAssertion(
         return;
 
     int err = pthread_cond_signal(cond);
+    assertSuccess(err_msg, err);
+}
+
+void condBroadcastSuccessAssertion(
+    pthread_cond_t *cond,
+    const char *err_msg){
+    if (cond == NULL)
+        return;
+
+    int err = pthread_cond_broadcast(cond);
     assertSuccess(err_msg, err);
 }
 
@@ -154,14 +165,14 @@ void iteration(
     const char *msg, 
     const char *err_msg){
     
-    printf(msg);
-    condSignalSuccessAssertion(cntx->cond_var, err_msg);
-    *cntx->signal_thread = (cntx->thread_id + 1) % cntx->thread_cnt;
     while (*cntx->signal_thread != cntx->thread_id)
         condWaitSuccessAssertion(cntx->cond_var, cntx->cond_mtx, err_msg);
-}
 
-#define THREAD_CNT 2
+    printf(msg);
+    *cntx->signal_thread = (cntx->thread_id + 1) % cntx->thread_cnt;
+    condBroadcastSuccessAssertion(cntx->cond_var, err_msg);
+    printf("%d\n", *cntx->signal_thread);
+}
 
 void *routine(void *data){
     if (data == NULL)
@@ -169,14 +180,15 @@ void *routine(void *data){
 
     Context *cntx = (Context*)data;
     lockSuccessAssertion(cntx->cond_mtx, "routine");
+    //printf("id: %d\n", cntx->thread_id);
     for (int i = 0; i < PRINT_CNT; ++i)
         iteration(cntx, THREAD_MSG,"routine");
 
-
+    
     *cntx->signal_thread = (cntx->thread_id + 1) % cntx->thread_cnt;
-    condSignalSuccessAssertion(cntx->cond_var, "routine");
+    condBroadcastSuccessAssertion(cntx->cond_var, "routine");
     unlockSuccessAssertion(cntx->cond_mtx, "routine");
-
+    
     pthread_exit((void*)SUCCESS_CODE);
 }
 
@@ -214,10 +226,12 @@ int main(int argc, char **argv){
     for (int i = 0; i < PRINT_CNT; ++i)
         iteration(&cntx[0], MAIN_MSG, "main");
     
+    
     signal_thread = 1;
-    condSignalSuccessAssertion(cntx[0].cond_var, "main");
+    condBroadcastSuccessAssertion(cntx[0].cond_var, "main");
     unlockSuccessAssertion(cntx[0].cond_mtx, "main");
     assertSuccess("main", err);
+    
 
     for (size_t i = 0; i < THREAD_CNT - 1; ++i){
         err = pthread_join(pid[i], NULL);
